@@ -1,0 +1,260 @@
+#!/bin/bash
+
+#set -e
+
+export MAINROOT="DRILLIX"
+
+echo ""
+CONTAINER="zookeeper"
+echo ">>> STARTING $CONTAINER CONTAINER from fabiomendescom/zookeeper image"
+sudo docker kill $CONTAINER > /dev/null
+sudo docker rm $CONTAINER > /dev/null
+sudo docker run -d \
+	--name="$CONTAINER" \
+	--net=host \
+	-p 2181:2181 -p 2888:2888 -p 3888:3888 \
+	fabiomendescom/zookeeper \
+	> /dev/null
+	
+sleep 6	
+echo ">>> FINISHED $CONTAINER CONTAINER. IP: $(sudo docker inspect --format '{{ .NetworkSettings.IPAddress }}' $CONTAINER)"		
+echo ">>> Testing $CONTAINER container"
+ZOOKEEPERIP=$DRX_ZOOKPRSVRS
+sudo docker exec -it $CONTAINER /home/zookeepercli --servers $ZOOKEEPERIP -c ls /
+if [ $? -eq 0 ]
+then
+  echo "TEST: PASSED"
+else
+  echo "TEST: FAILED" 
+fi
+echo ">>> Finished $CONTAINER testing"
+
+echo ""
+CONTAINER="redis"
+echo ">>> STARTING $CONTAINER CONTAINER from fabiomendescom/redis image"
+sudo docker kill $CONTAINER > /dev/null
+sudo docker rm $CONTAINER > /dev/null
+sudo docker run -d \
+	--name="$CONTAINER" \
+	-e "DRX_ZOOKPRSVRS=$DRX_ZOOKPRSVRS" \
+	-e "CONTAINERNAME=$CONTAINER" \
+	-e "PORTNUMBER=6379" \
+	-p 6379:6379 \
+	fabiomendescom/redis \
+	> /dev/null
+sleep 4
+echo ">>> FINISHED $CONTAINER CONTAINER. IP: $(sudo docker inspect --format '{{ .NetworkSettings.IPAddress }}' $CONTAINER)"		
+echo ">>> Testing $CONTAINER container"
+sudo docker exec -it $CONTAINER redis-cli ping	
+if [ $? -eq 0 ]
+then
+  echo "TEST: PASSED"
+else
+  echo "TEST: FAILED" 
+fi
+echo ">>> Finished $CONTAINER testing"
+
+echo ""
+CONTAINER="kafka" 
+echo ">>> STARTING $CONTAINER CONTAINER from fabiomendescom/kafka image"
+sudo docker kill $CONTAINER > /dev/null 
+sudo docker rm $CONTAINER > /dev/null 
+sudo docker run -d \
+	--name="$CONTAINER" \
+	-e "CONTAINERNAME=$CONTAINER" \
+	-e "DRX_ZOOKPRSVRS=$DRX_ZOOKPRSVRS" \
+	-e "BROKER_ID=1" \
+	-e "ZKROOT=/$MAINROOT/KAFKA" \
+	-p 9092:9092 \
+	fabiomendescom/kafka \
+	 > /dev/null
+sleep 6	
+echo ">>> FINISHED $CONTAINER CONTAINER. IP: $(sudo docker inspect --format '{{ .NetworkSettings.IPAddress }}' $CONTAINER)"		
+echo ">>> Testing $CONTAINER container"
+sudo docker exec -it $CONTAINER bin/kafka-topics.sh --zookeeper $DRX_ZOOKPRSVRS/DRILLIX/KAFKA --list 
+if [ $? -eq 0 ]
+then
+  echo "TEST: PASSED"
+else
+  echo "TEST: FAILED" 
+fi
+echo ">>> Finished $CONTAINER testing"
+
+echo ""
+CONTAINER="cassandra"
+echo ">>> STARTING $CONTAINER CONTAINER from fabiomendescom/cassandra image"
+sudo docker kill $CONTAINER > /dev/null 
+sudo docker rm $CONTAINER > /dev/null  
+sudo docker run -d \
+	--name="$CONTAINER" \
+	-e "CONTAINERNAME=$CONTAINER" \
+	-e "DRX_ZOOKPRSVRS=$DRX_ZOOKPRSVRS" \
+	-p 7000:7000 -p 7199:7199 -p 9042:9042 -p 9160:9160 -p 61621:61621 \
+	fabiomendescom/cassandra \
+	> /dev/null 
+sleep 20	
+echo ">>> FINISHED $CONTAINER CONTAINER. IP: $(sudo docker inspect --format '{{ .NetworkSettings.IPAddress }}' $CONTAINER)"		
+echo ">>> Testing $CONTAINER container"
+sudo docker exec -it $CONTAINER cqlsh -u cassandra -p cassandra -e "describe keyspaces;" $(sudo docker inspect --format '{{ .NetworkSettings.IPAddress }}' $CONTAINER) 9042
+if [ $? -eq 0 ]
+then
+  echo "TEST: PASSED"
+else
+  echo "TEST: FAILED" 
+fi
+echo ">>> Finished $CONTAINER testing"
+
+echo ""		
+CONTAINER="nimbus"
+echo ">>> STARTING $CONTAINER CONTAINER from fabiomendescom/cassandra image"
+sudo docker kill $CONTAINER > /dev/null
+sudo docker rm $CONTAINER > /dev/null
+sudo docker run -d \
+	--name="$CONTAINER" \
+	-e "CONTAINERNAME=$CONTAINER" \
+	-e "DRX_ZOOKPRSVRS=$DRX_ZOOKPRSVRS" \
+	-e "ZKROOT=/$MAINROOT/STORM" \
+	-p 6627:6627 -p 8080:8080 \
+	-p 3773:3773 -p 3772:3772 \
+	-p 8000:8000 \
+	fabiomendescom/storm nimbus \
+	> /dev/null
+sleep 20	
+echo ">>> FINISHED $CONTAINER CONTAINER. IP: $(sudo docker inspect --format '{{ .NetworkSettings.IPAddress }}' $CONTAINER)"		
+echo ">>> Testing $CONTAINER container"
+sudo docker exec -it $CONTAINER storm list
+if [ $? -eq 0 ]
+then
+  echo "TEST: PASSED"
+else
+  echo "TEST: FAILED" 
+fi
+echo ">>> Finished $CONTAINER testing"
+
+echo ""	
+CONTAINER="supervisor"
+echo ">>> STARTING $CONTAINER CONTAINER from fabiomendescom/cassandra image"
+sudo docker kill $CONTAINER > /dev/null 
+sudo docker rm $CONTAINER > /dev/null 
+sudo docker run -d \
+	--name="$CONTAINER" \
+	-e "CONTAINERNAME=$CONTAINER" \
+	-e "DRX_ZOOKPRSVRS=$DRX_ZOOKPRSVRS" \
+	-e "ZKROOT=/$MAINROOT/STORM" \
+	-e "NIMBUSIP=$(sudo docker inspect --format '{{ .NetworkSettings.IPAddress }}' nimbus)" \
+	-e "KAFKAIP=$$(sudo docker inspect --format '{{ .NetworkSettings.IPAddress }}' kafka)" \
+	-p 6700:6700 -p 6701:6701 -p 6702:6702 -p 6703:6703 \
+	fabiomendescom/storm supervisor \
+	> /dev/null
+sleep 20	
+echo ">>> FINISHED $CONTAINER CONTAINER. IP: $(sudo docker inspect --format '{{ .NetworkSettings.IPAddress }}' $CONTAINER)"		
+echo ">>> Testing $CONTAINER container"
+sudo docker exec -it $CONTAINER storm list
+if [ $? -eq 0 ]
+then
+  echo "TEST: PASSED"
+else
+  echo "TEST: FAILED" 
+fi
+echo ">>> Finished $CONTAINER testing"	
+
+sleep 15
+
+echo ""			
+CONTAINER="wordcounter"
+echo ">>> STARTING $CONTAINER CONTAINER from fabiomendescom/nodemicroservice image"
+sudo docker kill $CONTAINER > /dev/null 
+sudo docker rm $CONTAINER > /dev/null 
+sudo docker run -d \
+	--name="$CONTAINER" \
+	-e "CONTAINERNAME=$CONTAINER" \
+	-e "DRX_ZOOKPRSVRS=$DRX_ZOOKPRSVRS" \
+	-e "PORTNUMBER=9000" \
+	-e "KAFKAIP=$(sudo docker inspect --format '{{ .NetworkSettings.IPAddress }}' kafka)" \
+	-v /vagrant/public/containers/wordcounter/code:/var/www \
+	-p 9000:9000 \
+	fabiomendescom/nodemicroservice
+	> /dev/null
+sleep 20	
+echo ">>> FINISHED $CONTAINER CONTAINER. IP: $(sudo docker inspect --format '{{ .NetworkSettings.IPAddress }}' $CONTAINER)"		
+echo ">>> Testing $CONTAINER container"
+#FINISH
+if [ $? -eq 0 ]
+then
+  echo "TEST: PASSED"
+else
+  echo "TEST: FAILED" 
+fi
+echo ">>> Finished $CONTAINER testing"	
+
+
+exit
+
+
+./setzookeepervars.sh
+
+
+
+sleep 20	
+
+echo ""
+CONTAINER="nginx"
+echo ">>> STARTING $CONTAINER CONTAINER from fabiomendescom/nginx image"
+sudo docker kill $CONTAINER > /dev/null
+sudo docker rm $CONTAINER > /dev/null
+sudo docker run -d \
+	--name="$CONTAINER" \
+	-p 80:80 \
+	-v /vagrant/public/containers/nginx/conf:/etc/nginx \
+	-v /vagrant/public/containers/nginx/www:/home/www \
+	fabiomendescom/nginx \
+	> /dev/null
+echo ">>> FINISHED $CONTAINER CONTAINER. IP: $(sudo docker inspect --format '{{ .NetworkSettings.IPAddress }}' $CONTAINER)"		
+echo ">>> Testing $CONTAINER container"
+# ADD HERE A TEST FOR NGINX. THIS IS STILL NOT WORKING VERY WELL
+if [ $? -eq 0 ]
+then
+  echo "TEST: PASSED"
+else
+  echo "TEST: FAILED" 
+fi
+echo ">>> Finished $CONTAINER testing"
+
+
+# YOu need to create the events prior. Even though the first call to add to the queue creates the queue, 
+# a bug causes the first call to fail. To avoid this, we just create prior
+sudo docker exec -it kafka bin/kafka-topics.sh --zookeeper $DRX_ZOOKPRSVRS/DRILLIX/KAFKA --create --partitions 1 --replication-factor 1 --topic events
+	
+CASSANDRAIP=$(ifconfig docker0 | sed -En 's/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p')
+echo "Cassandra IP: $CASSANDRAIP"
+sudo docker exec -it cassandra cqlsh -u cassandra -p cassandra -e "create keyspace drillix with replication = {'class':'SimpleStrategy','replication_factor':3};" $CASSANDRAIP 9042
+sudo docker exec -it cassandra cqlsh -u cassandra -p cassandra -e "create table drillix.events (eventuuid uuid PRIMARY KEY,requestuuid uuid,tenantid uuid,dataset text,fields map<text,text>);" $CASSANDRAIP 9042
+
+
+
+exit
+
+# THIS IS DRILLIX SPECIFIC
+echo ""
+CONTAINER="nginx_drillix"
+echo ">>> STARTING $CONTAINER CONTAINER from fabiomendescom/nginx image"
+sudo docker kill $CONTAINER > /dev/null
+sudo docker rm $CONTAINER > /dev/null
+sudo docker run -d \
+	--name="$CONTAINER" \
+	-p 443:443 \
+	-v /vagrant/drillix/dockers/v0.1/containers/volumes/private/nginx/conf:/etc/nginx \
+	-v /vagrant/drillix/dockers/v0.1/containers/volumes/private/nginx/ssl:/etc/ssl \
+	fabiomendescom/nginx \
+	> /dev/null
+echo ">>> FINISHED $CONTAINER CONTAINER. IP: $(sudo docker inspect --format '{{ .NetworkSettings.IPAddress }}' $CONTAINER)"		
+echo ">>> Testing $CONTAINER container"
+
+if [ $? -eq 0 ]
+then
+  echo "TEST: PASSED"
+else
+  echo "TEST: FAILED" 
+fi
+echo ">>> Finished $CONTAINER testing"
+# END OF DRILLIX SPECIFIC

@@ -1,0 +1,23 @@
+events {
+  worker_connections  4096;  ## Default: 1024
+}
+ 
+http {
+	access_log   /var/log/nginx/access.log;
+	error_log	 /var/log/nginx/error.log;
+  
+	upstream LOADER {
+		server {{MICROSERVER}};
+	}
+
+	server {
+		listen 80;
+		
+		server_name  {{SERVERNAME}};
+		
+		location /sentence { 
+			proxy_pass http://LOADER/sentence;
+		}   		
+	}
+}
+

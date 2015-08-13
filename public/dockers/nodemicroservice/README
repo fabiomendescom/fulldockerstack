@@ -1,0 +1,8 @@
+This docker will process some REST items for event entry.
+This will eventually be a microservice that will handle the following:
+1. Receive the request
+2. Authenticated with bearer tokens
+3. Deliver the request into an SNS topic
+4. The SNS topic will be configured to write to SQS queues that will be
+picked up by other processes
+
